@@ -1,9 +1,22 @@
-from __future__ import print_function
+#!/usr/bin/env python
+# coding: utf-8
+
+"""
+This module contains the generic :class:`LogReader` as
+well as :class:`MessageSync` which plays back messages
+in the recorded order an time intervals.
+"""
+
+from __future__ import absolute_import, print_function
+
 import time
 import logging
 
+from .asc import ASCReader
 from .blf import BLFReader
-from .sqlite import SqlReader
+from .canutils import CanutilsLogReader
+from .csv import CSVReader
+from .sqlite import SqliteReader
 
 log = logging.getLogger('can.io.player')
 
@@ -17,30 +30,44 @@ class LogReader(object):
       * .blf
       * .csv
       * .db
+      * .log
 
     Exposes a simple iterator interface, to use simply:
 
         >>> for m in LogReader(my_file):
         ...     print(m)
 
-    Note there are no time delays, if you want to reproduce
-    the measured delays between messages look at the
-    :class:`can.util.MessageSync` class.
+    .. note::
+        There are no time delays, if you want to reproduce
+        the measured delays between messages look at the
+        :class:`can.util.MessageSync` class.
     """
 
-    @classmethod
-    def __new__(cls, other, filename):
-        if filename.endswith(".blf"):
+    @staticmethod
+    def __new__(cls, filename):
+        if not filename:
+            raise TypeError("a filename must be given")
+        elif filename.endswith(".asc"):
+            return ASCReader(filename)
+        elif filename.endswith(".blf"):
             return BLFReader(filename)
-        if filename.endswith(".db"):
-            return SqlReader(filename)
-        raise NotImplementedError("No read support for this log format")
+        elif filename.endswith(".csv"):
+            return CSVReader(filename)
+        elif filename.endswith(".db"):
+            return SqliteReader(filename)
+        elif filename.endswith(".log"):
+            return CanutilsLogReader(filename)
+        else:
+            raise NotImplementedError("No read support for this log format: {}".format(filename))
 
 
 class MessageSync(object):
+    """
+    Used to iterate over some given messages in the recorded time.
+    """
 
     def __init__(self, messages, timestamps=True, gap=0.0001, skip=60):
-        """
+        """Creates an new `MessageSync` instance.
 
         :param messages: An iterable of :class:`can.Message` instances.
         :param timestamps: Use the messages' timestamps.
@@ -54,6 +81,7 @@ class MessageSync(object):
 
     def __iter__(self):
         log.debug("Iterating over messages at real speed")
+
         playback_start_time = time.time()
         recorded_start_time = None
 
@@ -73,4 +101,5 @@ class MessageSync(object):
                 sleep_period = self.gap
 
             time.sleep(sleep_period)
+
             yield m

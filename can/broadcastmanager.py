@@ -1,23 +1,25 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+# coding: utf-8
+
 """
 Exposes several methods for transmitting cyclic messages.
-20/09/13
+
+The main entry point to these classes should be through
+:meth:`can.BusABC.send_periodic`.
 """
 
-import can
 import abc
 import logging
-import sched
 import threading
 import time
 
+
 log = logging.getLogger('can.bcm')
-log.debug("Loading base broadcast manager functionality")
 
 
 class CyclicTask(object):
     """
-    Abstract Base for all Cyclic Tasks
+    Abstract Base for all cyclic tasks.
     """
 
     @abc.abstractmethod
@@ -33,11 +35,12 @@ class CyclicSendTaskABC(CyclicTask):
 
     def __init__(self, message, period):
         """
-        :param message: The :class:`can.Message` to be sent periodically.
+        :param can.Message message: The message to be sent periodically.
         :param float period: The rate in seconds at which to send the message.
         """
         self.message = message
         self.can_id = message.arbitration_id
+        self.arbitration_id = message.arbitration_id
         self.period = period
         super(CyclicSendTaskABC, self).__init__()
 
@@ -47,7 +50,7 @@ class LimitedDurationCyclicSendTaskABC(CyclicSendTaskABC):
     def __init__(self, message, period, duration):
         """Message send task with a defined duration and period.
 
-        :param message: The :class:`can.Message` to be sent periodically.
+        :param can.Message message: The message to be sent periodically.
         :param float period: The rate in seconds at which to send the message.
         :param float duration:
             The duration to keep sending this message at given rate.
@@ -72,56 +75,29 @@ class ModifiableCyclicTaskABC(CyclicSendTaskABC):
         """Update the contents of this periodically sent message without altering
         the timing.
 
-        :param message: The :class:`~can.Message` with new :attr:`Message.data`.
+        :param can.Message message:
+          The message with the new :attr:`can.Message.data`.
+          Note: The arbitration ID cannot be changed.
         """
         self.message = message
 
 
 class MultiRateCyclicSendTaskABC(CyclicSendTaskABC):
     """Exposes more of the full power of the TX_SETUP opcode.
-
-    Transmits a message `count` times at `initial_period` then
-    continues to transmit message at `subsequent_period`.
     """
 
     def __init__(self, channel, message, count, initial_period, subsequent_period):
+        """
+        Transmits a message `count` times at `initial_period` then continues to
+        transmit message at `subsequent_period`.
+
+        :param can.interface.Bus channel:
+        :param can.Message message:
+        :param int count:
+        :param float initial_period:
+        :param float subsequent_period:
+        """
         super(MultiRateCyclicSendTaskABC, self).__init__(channel, message, subsequent_period)
-
-
-class ThreadBasedCyclicSendManager(object):
-    """Handles scheduling and transmission of messages using a separate thread."""
-
-    def __init__(self, send):
-        """
-        :param send:
-            A callable function to transmit one :class:`can.Message`.
-        """
-        self.send = send
-        self.scheduler = sched.scheduler(time.time, time.sleep)
-        self.thread = None
-
-    def add_task(self, task):
-        """Add task to be transmitted periodically.
-
-        :param can.broadcastmanager.ThreadBasedCyclicSendTask task:
-            Task to schedule
-        """
-        self._schedule_task(task)
-        if self.thread is None or not self.thread.is_alive():
-            self.thread = threading.Thread(target=self.scheduler.run)
-            self.thread.daemon = True
-            self.thread.start()
-
-    def _schedule_task(self, task):
-        self.scheduler.enterabs(task.next_time, task.message.arbitration_id,
-                                self._transmit, (task, ))
-
-    def _transmit(self, task):
-        self.send(task.message)
-        if not task.stopped and (task.end_time is None or
-                                 time.time() <= task.end_time):
-            task.next_time += task.period
-            self._schedule_task(task)
 
 
 class ThreadBasedCyclicSendTask(ModifiableCyclicTaskABC,
@@ -129,14 +105,13 @@ class ThreadBasedCyclicSendTask(ModifiableCyclicTaskABC,
                                 RestartableCyclicTaskABC):
     """Fallback cyclic send task using thread."""
 
-    def __init__(self, bus, message, period, duration=None):
+    def __init__(self, bus, lock, message, period, duration=None):
         super(ThreadBasedCyclicSendTask, self).__init__(message, period, duration)
-        if not hasattr(bus, "cyclic_manager"):
-            bus.cyclic_manager = ThreadBasedCyclicSendManager(bus.send)
         self.bus = bus
+        self.lock = lock
         self.stopped = True
-        self.next_time = time.time()
-        self.end_time = time.time() + duration - period if duration else None
+        self.thread = None
+        self.end_time = time.time() + duration if duration else None
         self.start()
 
     def stop(self):
@@ -144,12 +119,38 @@ class ThreadBasedCyclicSendTask(ModifiableCyclicTaskABC,
 
     def start(self):
         self.stopped = False
-        self.bus.cyclic_manager.add_task(self)
+        if self.thread is None or not self.thread.is_alive():
+            name = "Cyclic send task for 0x%X" % (self.message.arbitration_id)
+            self.thread = threading.Thread(target=self._run, name=name)
+            self.thread.daemon = True
+            self.thread.start()
+
+    def _run(self):
+        while not self.stopped:
+            # Prevent calling bus.send from multiple threads
+            with self.lock:
+                started = time.time()
+                try:
+                    self.bus.send(self.message)
+                except Exception as exc:
+                    log.exception(exc)
+                    break
+            if self.end_time is not None and time.time() >= self.end_time:
+                break
+            # Compensate for the time it takes to send the message
+            delay = self.period - (time.time() - started)
+            time.sleep(max(0.0, delay))
 
 
-def send_periodic(bus, message, period):
+def send_periodic(bus, message, period, *args, **kwargs):
     """
-    Send a message every `period` seconds on the given channel.
+    Send a :class:`~can.Message` every `period` seconds on the given bus.
 
+    :param can.BusABC bus: A CAN bus which supports sending.
+    :param can.Message message: Message to send periodically.
+    :param float period: The minimum time between sending messages.
+    :return: A started task instance
     """
-    return can.interface.CyclicSendTask(bus, message, period)
+    log.warning("The function `can.send_periodic` is deprecated and will " +
+                "be removed in version 2.3. Please use `can.Bus.send_periodic` instead.")
+    return bus.send_periodic(message, period, *args, **kwargs)

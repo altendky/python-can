@@ -1,17 +1,21 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 """
 Contains Python equivalents of the function and constant
 definitions in CANLIB's canstat.h, with some supporting functionality
 specific to Python.
 
 Copyright (C) 2010 Dynamic Controls
-
 """
+
 import ctypes
 
 
 class c_canStatus(ctypes.c_int):
     pass
 
+# TODO better formatting
 canOK = 0
 canERR_PARAM = -1
 canERR_NOMSG = -2
@@ -60,6 +64,10 @@ canMSG_NERR = 0x0010
 canMSG_ERROR_FRAME = 0x0020
 canMSG_TXACK = 0x0040
 canMSG_TXRQ = 0x0080
+
+canFDMSG_FDF = 0x010000
+canFDMSG_BRS = 0x020000
+canFDMSG_ESI = 0x040000
 
 canMSGERR_MASK = 0xff00
 canMSGERR_HW_OVERRUN = 0x0200
@@ -159,6 +167,8 @@ canOPEN_OVERRIDE_EXCLUSIVE = 0x0040
 canOPEN_REQUIRE_INIT_ACCESS = 0x0080
 canOPEN_NO_INIT_ACCESS = 0x0100
 canOPEN_ACCEPT_LARGE_DLC = 0x0200
+canOPEN_CAN_FD = 0x0400
+canOPEN_CAN_FD_NONISO = 0x0800
 
 canIOCTL_GET_RX_BUFFER_LEVEL = 8
 canIOCTL_GET_TX_BUFFER_LEVEL = 9
@@ -230,3 +240,9 @@ canBITRATE_62K = -6
 canBITRATE_50K = -7
 canBITRATE_83K = -8
 canBITRATE_10K = -9
+
+canFD_BITRATE_500K_80P = -1000
+canFD_BITRATE_1M_80P = -1001
+canFD_BITRATE_2M_80P = -1002
+canFD_BITRATE_4M_80P = -1003
+canFD_BITRATE_8M_60P = -1004

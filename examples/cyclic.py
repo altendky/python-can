@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+# coding: utf-8
+
 """
 This example exercises the periodic sending capabilities.
 
@@ -8,10 +10,13 @@ Expects a vcan0 interface:
 
 """
 
+from __future__ import print_function
+
 import logging
 import time
 
 import can
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -36,14 +41,20 @@ def limited_periodic_send(bus):
     if not isinstance(task, can.LimitedDurationCyclicSendTaskABC):
         print("This interface doesn't seem to support a ")
         task.stop()
+        return
 
+    time.sleep(1.5)
     print("stopped cyclic send")
 
 
-def test_periodic_send_with_modifying_data():
+def test_periodic_send_with_modifying_data(bus):
     print("Starting to send a message every 200ms. Initial data is ones")
     msg = can.Message(arbitration_id=0x0cf02200, data=[1, 1, 1, 1])
-    task = can.send_periodic('vcan0', msg, 0.20)
+    task = bus.send_periodic(msg, 0.20)
+    if not isinstance(task, can.ModifiableCyclicTaskABC):
+        print("This interface doesn't seem to support modification")
+        task.stop()
+        return
     time.sleep(2)
     print("Changing data of running task to begin with 99")
     msg.data[0] = 0x99
@@ -54,6 +65,7 @@ def test_periodic_send_with_modifying_data():
     print("stopped cyclic send")
     print("Changing data of stopped task to single ff byte")
     msg.data = bytearray([0xff])
+    msg.dlc = 1
     task.modify_data(msg)
     time.sleep(1)
     print("starting again")
@@ -93,17 +105,13 @@ if __name__ == "__main__":
 
     reset_msg = can.Message(arbitration_id=0x00, data=[0, 0, 0, 0, 0, 0], extended_id=False)
 
-
-
-    for interface in {
-        'socketcan_ctypes',
-        'socketcan_native'
-    }:
+    for interface, channel in [
+        ('socketcan', 'can0'),
+        #('ixxat', 0)
+    ]:
         print("Carrying out cyclic tests with {} interface".format(interface))
-        can.rc['interface'] = interface
 
-        channel = 'vcan0'
-        bus = can.interface.Bus(channel=channel)
+        bus = can.Bus(interface=interface, channel=channel, bitrate=500000)
         bus.send(reset_msg)
 
         simple_periodic_send(bus)
@@ -112,11 +120,12 @@ if __name__ == "__main__":
 
         limited_periodic_send(bus)
 
-        test_periodic_send_with_modifying_data()
+        test_periodic_send_with_modifying_data(bus)
 
         #print("Carrying out multirate cyclic test for {} interface".format(interface))
         #can.rc['interface'] = interface
         #test_dual_rate_periodic_send()
 
+        bus.shutdown()
 
     time.sleep(2)

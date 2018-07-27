@@ -14,6 +14,7 @@ The available interfaces are:
    interfaces/socketcan
    interfaces/kvaser
    interfaces/serial
+   interfaces/slcan
    interfaces/ixxat
    interfaces/pcan
    interfaces/usb2can
@@ -21,9 +22,21 @@ The available interfaces are:
    interfaces/iscan
    interfaces/neovi
    interfaces/vector
-   interfaces/remote
    interfaces/virtual
 
+Additional interfaces can be added via a plugin interface. An external package
+can register a new interface by using the ``python_can.interface`` entry point.
+
+The format of the entry point is ``interface_name=module:classname`` where
+``classname`` is a :class:`can.BusABC` concrete implementation.
+
+::
+
+ entry_points={
+     'python_can.interface': [
+         "interface_name=module:classname",
+     ]
+ },
 
 
 The *Interface Names* are listed in :doc:`configuration`.

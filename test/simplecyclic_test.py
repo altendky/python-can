@@ -1,28 +1,39 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+"""
+This module tests cyclic send tasks.
+"""
+
+from __future__ import absolute_import
+
 from time import sleep
 import unittest
-import logging
+
 import can
 
-logging.getLogger(__file__).setLevel(logging.DEBUG)
-
+from .config import *
 
 class SimpleCyclicSendTaskTest(unittest.TestCase):
 
+    @unittest.skipIf(IS_CI, "the timing sensitive behaviour cannot be reproduced reliably on a CI server")
     def test_cycle_time(self):
-        msg = can.Message(extended_id=False, arbitration_id=0x100, data=[0,1,2,3,4,5,6,7])
-        bus = can.interface.Bus(bustype='virtual')
+        msg = can.Message(extended_id=False, arbitration_id=0x123, data=[0,1,2,3,4,5,6,7])
+        bus1 = can.interface.Bus(bustype='virtual')
         bus2 = can.interface.Bus(bustype='virtual')
-        task = bus.send_periodic(msg, 0.01, 1)
+        task = bus1.send_periodic(msg, 0.01, 1)
         self.assertIsInstance(task, can.broadcastmanager.CyclicSendTaskABC)
-        sleep(1.5)
+
+        sleep(2)
         size = bus2.queue.qsize()
-        print(size)
-        # About 100 messages should have been transmitted. Some overhead will
-        # make it less though
-        self.assertTrue(90 < size < 110)
+        # About 100 messages should have been transmitted
+        self.assertTrue(80 <= size <= 120,
+                        '100 +/- 20 messages should have been transmitted. But queue contained {}'.format(size))
         last_msg = bus2.recv()
         self.assertEqual(last_msg, msg)
 
+        bus1.shutdown()
+        bus2.shutdown()
 
 if __name__ == '__main__':
     unittest.main()

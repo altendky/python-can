@@ -24,6 +24,13 @@ the **interface** and **channel** before importing from ``can.interfaces``.
     bus = Bus()
 
 
+You can also specify the interface and channel for each Bus instance::
+
+    import can
+
+    bus = can.interface.Bus(bustype='socketcan', channel='vcan0', bitrate=500000)
+
+
 Configuration File
 ------------------
 
@@ -50,6 +57,33 @@ The configuration file sets the default interface and channel:
     bitrate = <the bitrate in bits/s to use by default>
 
 
+The configuration can also contain additional sections:
+
+::
+
+    [default]
+    interface = <the name of the interface to use>
+    channel = <the channel to use by default>
+    bitrate = <the bitrate in bits/s to use by default>
+
+    [HS]
+    # All the values from the 'default' section are inherited
+    channel = <the channel to use>
+    bitrate = <the bitrate in bits/s to use. i.e. 500000>
+
+    [MS]
+    # All the values from the 'default' section are inherited
+    channel = <the channel to use>
+    bitrate = <the bitrate in bits/s to use. i.e. 125000>
+
+
+::
+
+    from can.interfaces.interface import Bus
+
+    hs_bus = Bus(config_section='HS')
+    ms_bus = Bus(config_section='MS')
+
 Environment Variables
 ---------------------
 
@@ -74,6 +108,8 @@ Lookup table of interface names:
 +---------------------+-------------------------------------+
 | ``"serial"``        | :doc:`interfaces/serial`            |
 +---------------------+-------------------------------------+
+| ``"slcan"``         | :doc:`interfaces/slcan`             |
++---------------------+-------------------------------------+
 | ``"ixxat"``         | :doc:`interfaces/ixxat`             |
 +---------------------+-------------------------------------+
 | ``"pcan"``          | :doc:`interfaces/pcan`              |
@@ -87,8 +123,6 @@ Lookup table of interface names:
 | ``"neovi"``         | :doc:`interfaces/neovi`             |
 +---------------------+-------------------------------------+
 | ``"vector"``        | :doc:`interfaces/vector`            |
-+---------------------+-------------------------------------+
-| ``"remote"``        | :doc:`interfaces/remote`            |
 +---------------------+-------------------------------------+
 | ``"virtual"``       | :doc:`interfaces/virtual`           |
 +---------------------+-------------------------------------+
